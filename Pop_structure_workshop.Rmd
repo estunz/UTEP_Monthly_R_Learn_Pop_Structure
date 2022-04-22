@@ -1,0 +1,184 @@
+---
+title: "Pop_structure_workshop_code"
+output: html_document
+date: '2022-04-20'
+author: "Liz Stunz"
+https://github.com/estunz/UTEP_Monthly_R_Learn_Pop_Structure/
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Load packages
+
+
+```{r, echo=FALSE}
+#for DAPC/compoplot
+library(adegenet)
+library(pegas)
+
+#for AMOVA
+library(poppr)
+
+#set working directory:
+setwd("~/Monthly_R_learn")
+```
+Discriminant Analysis of Principal Components (DAPC) uses molecular data (often single nucleotide polymorphisms (SNPs)) to determine the number of clusters (of most related individuals) in a group of genetically related individuals. The multivariate statistical approach variance first transforms data using a principal components analysis (PCA). Clusters are then identified using discriminant analysis (DA). A DA uses discriminant functions, which are used to explain differences between groups and minimize variation within clusters.
+
+Helpful tutorial: https://adegenet.r-forge.r-project.org/files/tutorial-dapc.pdf
+
+To begin, load your Structure file (typically only neutral markers are used for population structure analyses and single SNP per locus data sets are often used to reduce linkage disequilibrium (LD)):
+
+```{r}
+pops <- read.structure("example_maf_singleSNP_neut_hwe.str")
+```
+Running a DAPC doesn't involve much code, but you need to be somewhat familiar with the Structure file format to correctly read in your file as a genind object. Structure file format can vary so we will go through each question, and answer as it corresponds to the example_maf_singleSNP_neut_hwe.str file.
+
+1. How many genotypes are there? (This corresponds to the number of individuals in your Structure file)
+# 225
+
+2. How many markers are there? (This refers to the number of SNPs/markers contained in the Structure file. The number is usually easy to find in output logs from processing raw sequence data. I use either the populations.log from Stacks or the log generated in PLINK after filtering out markers deviating from HWE to get the marker count)
+# 2776
+
+3. Which column contains labels for genotypes ('0' if absent)?
+# 1
+
+4.  Which column contains the population factor ('0' if absent)? 
+# 2
+
+5. Which other optional columns should be read (press 'return' when done)? 
+# press enter to continue, no optional columns in this Structure file
+
+6. Which row contains the marker names ('0' if absent)? (typically will be row 1 or 2, depending if there's a header in file)
+# 2
+
+7. Are genotypes coded by a single row (y/n)? (Be sure to double check the Structure file to see if an individual is represented by one or two rows. The individuals in this file are diploid, thus coded by 2 rows)
+# n
+
+```{r}
+
+grp <- find.clusters(pops, max.n.clust = 15)  #usually max number of clusters if the # of sites/pops in file, but depends on dataset)
+```
+
+To determine the most supported number of groups or clusters of the most genetically related individuals in the data set, you must first choose the number principal components (PCs) to retain. Principal components are new variables created by linear combinations of mixtures of initial variables (or markers). You will be prompted with 2 questions after running this code:
+
+1. Choose the number PCs to retain (>= 1):
+# 75
+
+DAPC can benefit from not using too many PCs. If too many components (in relation to the number of individuals) can cause over-fitting and instability in membership probabilities. Aim to retain PCs explaining at least ~60% cumulative variance.
+
+2. Choose the number of clusters (>=2):
+# 3 
+
+Most supported # of clusters as identified with Bayesian Information Criterion (most supported=cluster# with lowest BIC). 2 clusters often most supported and biased, especially for populations with subtle population structure and in simulated data when 1 or 3 clusters
+were supported for simulations (Cullingham et al., 2020); Structure results also supported 3 clusters]
+```{r}
+#see cluster assignment by individual in matrix format:
+head(grp$grp, 225)
+
+#see cluster assignment of individuals by site in a table:
+table(pop(pops), grp$grp)
+
+#to create plot/alternative way to view amount of individuals assigned to each cluster by site:
+table.value(table(pop(pops), grp$grp), col.lab=paste("cluster", 1:15),
+  row.lab=paste("site", 1:15))
+
+```
+Running the DAPC
+
+```{r}
+dapc1 <- dapc(pops, grp$grp)
+#n.pca = an integer indicating the number of axes 
+  #retained in the Discriminant Analysis step. If NULL, interactive selection is triggered
+#n.da = an integer indicating the number of axes retained in the Discriminant Analysis step. 
+```
+Choose the number PCs to retain (>=1):
+#75
+
+Choose the number discriminant functions to retain (>=1):
+#2 (# of clusters selected - 1)
+
+```{r}
+#Plotting the DAPC
+scatter (dapc1, posi.da="topleft", bg="white", pch=17:22)
+
+```
+We have our first DAPC scatter plot, showing color-coded clusters and individual assignment to each of those clusters. The DA eigenvalues are in the top left corner and overlapping cluster #1, which looks messy, but there are multiple options for customizing these plots:
+```{r}
+myCol <- c("#DB2B39", "#37448D", "#F3A712")
+
+scatter (dapc1, posi.da="bottomright", bg="white", pch=17:22, col=myCol)
+```
+
+```{r}
+scatter(dapc1, bg="white", pch=17:22, cstar=0, col=myCol, scree.da = FALSE,
+        posi.da ="topleft")
+points(dapc1$grp.coord[,1], dapc1$grp.coord[,2], pch=4,
+       cex=3, lwd=8, col="black")
+points(dapc1$grp.coord[,1], dapc1$grp.coord[,2], pch=4,
+        cex=3, lwd=2, col=myCol)
+```
+
+```{r}
+scatter(dapc1, ratio.pca=0.3, bg="white", pch=20, cell=0,
+    cstar=0, col=myCol, solid=.6, cex=3, clab=0,
+    mstree=TRUE, scree.da=FALSE, posi.pca="bottomright", txt.leg=paste("Cluster",1:3))
+points(dapc1$grp.coord[,1], dapc1$grp.coord[,2], pch=4,
+    cex=3, lwd=8, col="black")
+```
+You can also run a DAPC that will show cluster assignment by population and individual, for this it's useful to assign labels for each population:
+```{r}
+levels(pops$pop) <- c("popA", "popB", "popC", "popD", "popE",
+    "popF", "popG", "popH", "popI", "popJ", "popK",
+        "popL", "popM", "popN", "popO")
+
+dapc2 <- dapc(pops) #usually 150 PCs (or n/3 for retained PCs)
+```
+Choose the number PCs to retain (>=1): 
+#75
+
+Choose the number discriminant functions to retain (>=1):
+#14 (will be # of populations - 1)
+```{r}
+scatter(dapc3, scree.da=FALSE,cell=1.5, cex=2, bg="white",cstar=0)
+```
+```{r}
+myCol <- rainbow(3)
+col <- rainbow(length(levels(pop(pops))))
+col.points <- transp(col[as.integer(pop(pops))],.2)
+scatter(dapc3, col=col, bg="white", scree.da=0, pch="", 
+        cstar=0, clab=0, xlim=c(-10,10), legend=TRUE)
+points(dapc3$ind.coord[,1], dapc3$ind.coord[,2], pch=20,
+       col=col.points, cex=5)
+```
+COMPOPLOT: creates a bar plot, with individuals as bars showing group assignment probability (typically use Admixture or Structure instead, as results are better visualized, especially admixed individuals, but this is a quick option to create a similar figure!)
+```{r}
+compoplot(dapc1, posi="bottomright", txt.leg=paste("Cluster", 1:3))
+```
+Analysis of Molecular Variance (AMOVA): test for differentiation across hierarchical levels of population structure using molecular markers.
+
+```{r}
+temp <- read.table('example_15pop_225ind_AMOVA_reg_pop.csv', header=TRUE, sep = ',')
+#check column names of table: should have 'popname' and 'region' (corresponding to cluster)
+colnames(temp)
+#add temp 'strata'/columns to pops genind object
+strata(pops) <- temp
+#convert genind object to genclone object 
+agc <- as.genclone(pops)
+agc
+
+#Run the AMOVA (will have multiple loci with >5% missing data, this is normal for SNP data )
+amov <- poppr.amova(agc, ~region/popname, within = FALSE)
+
+#Check the output, also, samples will refer to populations here!
+amov
+```
+
+The $componentsofcovariance section shows that most SNP variation is occurring within populations (~95%), while ~2% of SNP variation occurs between pops within each cluster and ~3% of variation occurs between clusters.
+
+Now we can assess the statistical significance of variation at each level (1. within pops, 2. between pops, and 3. between clusters):
+```{r}
+amova.test <- randtest(amov)
+amova.test
+```
+We can see that SNP variation is significant at each level of the AMOVA: variation at each level has a p-value of 1.
